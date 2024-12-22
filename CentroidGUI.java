@@ -54,7 +54,7 @@ public class CentroidGUI {
         JFrame.setDefaultLookAndFeelDecorated(true);
 
         // Create and set up the window.
-        JFrame frame = new JFrame("Graph GUI");
+        JFrame frame = new JFrame("Centroid Decomposition");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         // Add components

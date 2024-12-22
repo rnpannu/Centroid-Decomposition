@@ -5,7 +5,7 @@ public class EdgeData {
 
     private Double distance;
 
-    private Color color = new Color(8,83,109); //default color
+    private Color color = new Color(76, 2, 4); //default color
 
 
     public EdgeData(Double distance) {

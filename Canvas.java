@@ -44,11 +44,11 @@ public class Canvas extends JComponent {
     // Reset to default colours
      private void resetColors() {
          if (tree != null) {
-             for (Tree<NodeData,EdgeData>.Edge edge : tree.getEdges()) {
-                 edge.getData().setColor(new Color(8, 83, 109)); // Default edge color
+             for (Tree<NodeData,EdgeData>.Edge edge:tree.getEdges()){
+                 edge.getData().setColor( new Color(76, 2, 4));
              }
-             for (Tree<NodeData,EdgeData>.Node node : tree.getNodes()) {
-                 node.getData().setColor(new Color(8, 83, 109)); // Default node color
+             for (Tree<NodeData,EdgeData>.Node node:tree.getNodes()){
+                 node.getData().setColor(new Color(58, 5, 94));
              }
          }
      }
@@ -102,6 +102,8 @@ public class Canvas extends JComponent {
     }
     // Swing worker class that handles the GUI processes.
     public class DecompositionWorker extends SwingWorker<Void, Tree<NodeData, EdgeData>.Node> {
+        public Tree<NodeData, EdgeData>.Node currentNode;
+        public Tree<NodeData, EdgeData>.Node currentCentroid;
         private final Tree<NodeData, EdgeData> decompositionTree;
         public DecompositionWorker(Tree<NodeData, EdgeData> tree) {
             this.decompositionTree = getCentroidDecomposition();
@@ -117,55 +119,98 @@ public class Canvas extends JComponent {
             }
 
             // Mark which nodes have been used as centroids
-            ArrayList<Tree<NodeData,EdgeData>.Node> centroidMarked = new ArrayList<>();
+            Set<Tree<NodeData,EdgeData>.Node> centroidMarked = new HashSet<>();
 
             // Map to keep track of original nodes to centroid nodes
             Map<Tree<NodeData,EdgeData>.Node, Tree<NodeData,EdgeData>.Node> centroidMapping = new HashMap<>();
 
-
             // Start centroid decomposition from the first node
-            getCentroidRecursive(tree.getNodes().get(0), centroidTree, centroidMarked, centroidMapping);
+            getCentroidRecursive(tree.getNodes().get(0), null, centroidTree, centroidMarked, centroidMapping);
 
             return centroidTree;
         }
-        private Tree<NodeData,EdgeData>.Node getCentroidRecursive(Tree<NodeData,EdgeData>.Node currentNode, Tree<NodeData,EdgeData> centroidTree,
-                                                                  ArrayList<Tree<NodeData,EdgeData>.Node> centroidMarked,
-                                                                  Map<Tree<NodeData,EdgeData>.Node, Tree<NodeData,EdgeData>.Node> centroidMapping){
-            // Find the centroid of the current subtree
-            System.out.println("\nProspective node: " + currentNode.getData().getText());
 
+        private Tree<NodeData,EdgeData>.Node getCentroidRecursive(
+                Tree<NodeData,EdgeData>.Node currentNode,
+                Tree<NodeData,EdgeData>.Node parentCentroid,
+                Tree<NodeData,EdgeData> centroidTree,
+                Set<Tree<NodeData,EdgeData>.Node> centroidMarked,
+                Map<Tree<NodeData,EdgeData>.Node, Tree<NodeData,EdgeData>.Node> centroidMapping) {
+
+            // Find the centroid of the current subtree
+            System.out.println("\nProcessing subtree rooted at: " + currentNode.getData().getText());
+
+            // Get size of current subtree
+            int subtreeSize = getSubtreeSize(currentNode, centroidMarked);
+
+            // If subtree is too small, stop decomposition
+            if (subtreeSize <= 2) {
+                System.out.println("Subtree size " + subtreeSize + " is too small, stopping decomposition");
+                return parentCentroid;
+            }
 
             Tree<NodeData,EdgeData>.Node centroid = findCentroid(currentNode, centroidMarked);
+
+            // If we already found this centroid before, use it
+            if (centroidMarked.contains(centroid)) {
+                System.out.println("Reusing existing centroid: " + centroid.getData().getText());
+                return centroid;
+            }
+
             // Mark this node as a centroid
             centroidMarked.add(centroid);
 
-            // Create a centroid node in the new tree
+            // Create a centroid node in the new tree if we haven't already
+            Tree<NodeData,EdgeData>.Node centroidTreeNode;
+            if (centroidMapping.containsKey(centroid)) {
+                centroidTreeNode = centroidMapping.get(centroid);
+            } else {
+                centroidTreeNode = centroidTree.addNode(centroid.getData());
+                centroidMapping.put(centroid, centroidTreeNode);
+            }
 
-            Tree<NodeData,EdgeData>.Node centroidTreeNode = centroidTree.addNode(centroid.getData());
-            centroidMapping.put(centroid, centroidTreeNode);
+            // If we have a parent centroid, connect them
+            if (parentCentroid != null && centroidMapping.containsKey(parentCentroid)) {
+                centroidTree.addEdge(new EdgeData(1.0),
+                        centroidMapping.get(parentCentroid),
+                        centroidTreeNode);
+            }
 
             // Find the connected components after removing the centroid
             List<Tree<NodeData,EdgeData>.Node> components = findComponents(centroid, centroidMarked);
 
             // Recursively decompose each component
-            for (Tree.Node component : components) {
-                if (!centroidMarked.contains(component)) {
-                    Tree.Node componentCentroid = getCentroidRecursive(component, centroidTree,
-                            centroidMarked, centroidMapping);
-
-                    // Add an edge between the current centroid and the component's centroid
-                    if (componentCentroid != null) {
-                        centroidTree.addEdge((new EdgeData(1.0)),
-                                centroidMapping.get(centroid),
-                                centroidMapping.get(componentCentroid));
-                    }
-                }
+            for (Tree<NodeData,EdgeData>.Node component : components) {
+                getCentroidRecursive(component, centroid, centroidTree,
+                        centroidMarked, centroidMapping);
             }
 
             return centroid;
         }
 
-        private Tree<NodeData,EdgeData>.Node findCentroid(Tree<NodeData,EdgeData>.Node root, ArrayList<Tree<NodeData,EdgeData>.Node> centroidMarked) {
+        private int getSubtreeSize(Tree<NodeData,EdgeData>.Node root, Set<Tree<NodeData,EdgeData>.Node> centroidMarked) {
+            Set<Tree<NodeData,EdgeData>.Node> visited = new HashSet<>();
+            return countSubtreeNodes(root, null, visited, centroidMarked);
+        }
+
+        private int countSubtreeNodes(Tree<NodeData,EdgeData>.Node current,
+                                      Tree<NodeData,EdgeData>.Node parent,
+                                      Set<Tree<NodeData,EdgeData>.Node> visited,
+                                      Set<Tree<NodeData,EdgeData>.Node> centroidMarked) {
+            if (visited.contains(current) || centroidMarked.contains(current)) return 0;
+
+            visited.add(current);
+            int count = 1;
+
+            for (Tree<NodeData,EdgeData>.Node neighbor : current.getNeighbors()) {
+                if (neighbor != parent) {
+                    count += countSubtreeNodes(neighbor, current, visited, centroidMarked);
+                }
+            }
+
+            return count;
+        }
+        private Tree<NodeData,EdgeData>.Node findCentroid(Tree<NodeData,EdgeData>.Node root, Set<Tree<NodeData,EdgeData>.Node> centroidMarked) {
             int[] totalSize = {0};
             Map<Tree<NodeData,EdgeData>.Node, Integer> subtreeSize = new HashMap<>();
 
@@ -180,7 +225,7 @@ public class Canvas extends JComponent {
         private void calculateSubtreeSizes(Tree<NodeData,EdgeData>.Node current, Tree<NodeData,EdgeData>.Node parent,
                                            Map<Tree<NodeData,EdgeData>.Node, Integer> subtreeSize,
                                            int[] totalSize,
-                                           ArrayList<Tree<NodeData,EdgeData>.Node> centroidMarked) {
+                                           Set<Tree<NodeData,EdgeData>.Node> centroidMarked) {
             if (centroidMarked.contains(current)) return;
 
 
@@ -199,7 +244,7 @@ public class Canvas extends JComponent {
         private Tree<NodeData,EdgeData>.Node findCentroidHelper(Tree<NodeData,EdgeData>.Node current, Tree<NodeData,EdgeData>.Node parent,
                                                                 Map<Tree<NodeData,EdgeData>.Node, Integer> subtreeSize,
                                                                 int totalSize,
-                                                                ArrayList<Tree<NodeData,EdgeData>.Node> centroidMarked) {
+                                                                Set<Tree<NodeData,EdgeData>.Node> centroidMarked) {
             boolean isCentroid = true;
             Tree<NodeData,EdgeData>.Node heaviestChild = null;
             int maxChildSize = 0;
@@ -228,7 +273,7 @@ public class Canvas extends JComponent {
             return findCentroidHelper(heaviestChild, current, subtreeSize, totalSize, centroidMarked);
         }
 
-        private List<Tree<NodeData,EdgeData>.Node> findComponents(Tree<NodeData,EdgeData>.Node centroid, ArrayList<Tree<NodeData,EdgeData>.Node> centroidMarked) {
+        private List<Tree<NodeData,EdgeData>.Node> findComponents(Tree<NodeData,EdgeData>.Node centroid, Set<Tree<NodeData,EdgeData>.Node> centroidMarked) {
             List<Tree<NodeData,EdgeData>.Node> components = new ArrayList<>();
             System.out.print("\nComponent rooted at centroid: " + centroid.getData().getText() + "\nComponent Node: ");
             for (Tree<NodeData,EdgeData>.Node neighbor : centroid.getNeighbors()) {
@@ -268,7 +313,7 @@ public class Canvas extends JComponent {
             Tree<NodeData, EdgeData>.Node lastCentroid = centroids.get(centroids.size() - 1);
 
             // Visualization stages
-            highlightPreprocessing(lastCentroid);
+            //highlightPreprocessing(lastCentroid);
             repaint();
 
             try {
@@ -302,8 +347,8 @@ public class Canvas extends JComponent {
         }
 
         private void highlightCentroid(Tree<NodeData, EdgeData>.Node node) {
-            // Highlight the centroid in green
-            node.getData().setColor(Color.GREEN);
+            // Highlight the centroid in blue
+            node.getData().setColor(Color.BLUE);
 
             // Highlight edges connected to the centroid in red
             for (Tree<NodeData, EdgeData>.Edge edge : node.getEdges()) {
@@ -313,12 +358,6 @@ public class Canvas extends JComponent {
 
 
     }
-    private void highlightNode(Tree<NodeData, EdgeData>.Node node) {
-        for (Tree<NodeData, EdgeData>.Edge edge : node.getEdges()) {
-            edge.getData().setColor(Color.RED); // Highlight subtree connections
-        }
-        node.getData().setColor(Color.GREEN); // Highlight centroid
-    }
 
     /**
      * Repaint every thing to the default color
@@ -326,10 +365,10 @@ public class Canvas extends JComponent {
     public void refresh(){
         if (tree != null) {
             for (Tree<NodeData,EdgeData>.Edge edge:tree.getEdges()){
-                edge.getData().setColor(new Color(8,83,109));
+                edge.getData().setColor( new Color(76, 2, 4));
             }
             for (Tree<NodeData,EdgeData>.Node node:tree.getNodes()){
-                node.getData().setColor(new Color(8,83,109));
+                node.getData().setColor(new Color(58, 5, 94));
             }
         }
 

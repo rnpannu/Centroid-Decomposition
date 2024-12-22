@@ -8,7 +8,7 @@ public class NodeData {
     private String text;
 
     // default
-    private Color color = new Color(8,83,109);
+    private Color color = new Color(58, 5, 94);
 
 
     public NodeData(Point position, String text) {
